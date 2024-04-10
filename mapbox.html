@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Display a globe on a webpage</title>
+<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.11.0/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.11.0/mapbox-gl.js"></script>
+
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
+<link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" type="text/css">
+
+<style>
+    body { margin: 0; padding: 0; }
+    #map {
+        position: fixed; 
+        column-width: 100vw; 
+        height: 100vh;
+        
+        padding: 0%;
+        z-index: 0;
+      }
+    .calculation-box {
+        position: absolute;
+        bottom: 40px;
+        width: auto;
+        right: 10px;
+        background-color: rgba(255, 255, 255, 0.9);
+        padding: 15px;
+        text-align: center;
+        border-radius: 20px;
+        display: none;
+    }
+    .calculated-area{
+        color:black;
+    }
+    p {
+        font-family: 'Open Sans';
+        margin: 0;
+        font-size: 13px;
+    }
+    #flyTo{
+        display: block;
+        position: relative;
+        margin: 0px auto;
+        padding: 10px;
+        border: none;
+        border-radius: 3px;
+        font-size: 12px;
+        text-align: center;
+        color: #fff;
+        background: #ee8a65;
+    }
+
+    .info {
+        position: fixed;
+        top: 35%;
+        right: 10px;
+        transform: translateY(-50%);
+        display: block;
+        margin: 0px auto;
+        
+        border: none;
+        border-radius: 3px;
+        font-size: 20px;
+        width: 31px;
+        padding: 1px;
+        text-align: center;
+        background: #fff;
+        outline: none;
+
+        border: 2px solid rgb(224, 224, 222);
+        color: black;
+        border-radius: 6px;
+    }
+    .info:hover{
+        background-color: rgb(232, 230, 230);
+        cursor: pointer;
+
+
+    }
+    #sidebar {
+        display: block;
+        flex-direction: column;
+        padding-left: 20px;
+        position: fixed;
+        left: 0;
+        display: flex;
+        height: 100vh;
+        width: clamp(200px,250px,400px); 
+        z-index: 1;
+        background-color: rgba(255, 255, 255, 1);         
+        transition: transform 0.7s ease-in-out;
+        border:none;
+        overflow: auto;
+      }
+
+      .layerToggleLabel {
+        display: flex;
+        align-items: center; /* Align items vertically center */
+        margin-bottom: 5px;
+    }
+    
+    .checkbox-wrapper {
+        display: flex;
+        align-items: center; 
+        padding: 5px;
+
+
+    }
+    .mapboxgl-popup {
+        max-width: 400px;
+        font:
+            12px/20px 'Helvetica Neue',
+            Arial,
+            Helvetica,
+            sans-serif;
+    }
+    
+</style>
+
+</head>
+<body>
+    <div id="sidebar">
+        <h2 class="titleName">Layers</h2>
+        <div id="layerToggle">
+            
+        </div>
+    </div>
+    <div id="map"></div>
+
+<button type="button" id="flyTo">Fly</button>
+<button  class='info' id="toggleFeatureInfo">ℹ️</button>
+<button type="button" class='info' id="toggleBaseLayer">🌐</button>
+
+<div class="calculation-box">
+    <div id="calculated-area"></div>
+</div>
+
+<script>
+mapboxgl.accessToken = 'pk.eyJ1IjoiZ3Zpa3JhbWFuIiwiYSI6ImNsdXFpNGxrZTJiZ3gyamxpcXg1MTZicWwifQ.rnrsW4JGmWMdLH_QAMz3oQ';
+const map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/gvikraman/clusbqsj500bk01r5erdk1t0d/',
+    zoom: 16,
+    center: [77.00760, 8.38760],
+    projection: 'globe'
+});
+
+const layerIds = []; // Array to hold layer IDs
+
+map.on('load', () => {
+    map.setFog({});
+    // Log the available layers
+    const layers = map.getStyle().layers;
+    layers.forEach(layer => {
+        layerIds.push(layer.id);
+    });
+
+    // Add layer toggles to sidebar
+    layerIds.forEach(layerId => {
+        const toggleCheckbox = document.createElement('input');
+        toggleCheckbox.type = 'checkbox';
+        toggleCheckbox.id = `toggle${layerId}`;
+        toggleCheckbox.classList.add('layerToggleCheckbox');
+        toggleCheckbox.checked = true;
+
+        const toggleLabel = document.createElement('label');
+        toggleLabel.htmlFor = `toggle${layerId}`;
+        toggleLabel.classList.add('layerToggleLabel');
+        toggleLabel.textContent = layerId;
+
+        const checkboxWrapper = document.createElement('div');
+        checkboxWrapper.classList.add('checkbox-wrapper');
+        checkboxWrapper.appendChild(toggleCheckbox);
+        checkboxWrapper.appendChild(toggleLabel);
+        document.getElementById('layerToggle').appendChild(checkboxWrapper);
+
+        toggleCheckbox.addEventListener('change', function () {
+            const visibility = this.checked ? 'visible' : 'none';
+            map.setLayoutProperty(layerId, 'visibility', visibility);
+        });
+    });
+});
+
+
+map.addControl(new mapboxgl.FullscreenControl(), 'top-right');
+map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+const draw = new MapboxDraw({
+    displayControlsDefault: false,
+    controls: {
+        polygon: true,
+        line_string: true,
+        trash: true
+    }
+});
+map.addControl(draw);
+
+map.on('draw.create', updateArea);
+map.on('draw.delete', updateArea);
+map.on('draw.update', updateArea);
+
+
+//street
+document.getElementById('toggleBaseLayer').addEventListener('click', () => {
+    const currentStyle = map.getStyle();
+    const newStyle = currentStyle.sources.mapbox ?  'mapbox://styles/gvikraman/clusbqsj500bk01r5erdk1t0d' : 'mapbox://styles/mapbox/streets-v11';
+    map.setStyle(newStyle);
+});
+
+//featureInfo Popup
+document.addEventListener('DOMContentLoaded', function() {
+    const toggleButton = document.getElementById('toggleFeatureInfo');
+    let featureInfoVisible = false;
+
+    toggleButton.addEventListener('click', () => {
+        featureInfoVisible = !featureInfoVisible;
+        if (featureInfoVisible) {
+            map.on('click', displayFeatureInfo);
+            toggleButton.style.backgroundColor = 'rgb(232, 230, 230)';
+            document.body.style.cursor = "pointer";
+        } else {
+            map.off('click', displayFeatureInfo);
+            toggleButton.style.backgroundColor = 'white';
+            document.body.style.cursor = "pointer";
+
+        }
+    });
+
+    function displayFeatureInfo(e) {
+        const features = map.queryRenderedFeatures(e.point);
+        if (features.length > 0) {
+            const properties = features[0].properties;
+            const propertiesTable = createPropertiesTable(properties);
+            new mapboxgl.Popup()
+                .setLngLat(e.lngLat)
+                .setHTML(propertiesTable)
+                .addTo(map);
+        }
+    }
+    
+    function createPropertiesTable(properties) {
+        let tableHTML = '<table>';
+        for (const key in properties) {
+            if (properties.hasOwnProperty(key)) {
+                tableHTML += `<tr><td>${key}</td><td>${properties[key]}</td></tr>`;
+            }
+        }
+        tableHTML += '</table>';
+        return tableHTML;
+    }
+    
+});
+
+
+function updateArea(e) {
+    const data = draw.getAll();
+    const answer = document.getElementById('calculated-area');
+    const calculationBox = document.querySelector('.calculation-box');
+    if (data.features.length > 0) {
+        let area = 0;
+        let distance = 0;
+        let hasPolygon = false;
+        let hasLineString = false;
+        let htmlContent = '';
+        data.features.forEach(feature => {
+            if (feature.geometry.type === 'Polygon') {
+                area += turf.area(feature);
+                hasPolygon = true;
+            } else if (feature.geometry.type === 'LineString') {
+                distance += turf.length(feature);
+                hasLineString = true;
+            }
+        });
+
+        if (hasPolygon) {
+            const roundedArea = Math.round(area * 100) / 100;
+            htmlContent += `<p><strong>Area:</strong> ${roundedArea} square meters</p>`;
+        }
+        if (hasLineString) {
+            const roundedDistance = Math.round(distance * 100) / 100;
+            htmlContent += `<p><strong>Distance:</strong> ${roundedDistance} meters</p>`;
+        }
+        answer.innerHTML = htmlContent.trim();
+
+        calculationBox.style.display = 'block';
+    } else {
+        answer.innerHTML = '';
+        calculationBox.style.display = 'none';
+    }
+}
+
+document.getElementById('flyTo').addEventListener('click', () => {
+    const targetLocation = [77.00760, 8.38760];
+    const currentCenter = map.getCenter();
+
+    const precision = 6;
+    const currentLng = currentCenter.lng.toFixed(precision);
+    const currentLat = currentCenter.lat.toFixed(precision);
+    const targetLng = targetLocation[0].toFixed(precision);
+    const targetLat = targetLocation[1].toFixed(precision);
+
+    if (currentLng === targetLng && currentLat === targetLat) {
+        map.flyTo({
+            center: [-73.975676, 40.768620],
+            essential: true
+        });
+    } else {
+        map.flyTo({
+            center: targetLocation,
+            essential: true,
+            zoom: 15
+        });
+    }
+});
+</script>
+
+</body>
+</html>
